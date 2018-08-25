@@ -1,17 +1,14 @@
 package main
 
 import (
+	"encoding/csv"
 	"fmt"
 	"log"
 	"math"
+	"math/rand"
+	"os"
+	"strconv"
 )
-
-type DataSet []Data
-
-type Data struct {
-	X []float64
-	Y float64
-}
 
 type Regression struct {
 	weights    []float64
@@ -42,22 +39,28 @@ func adamSolver(dataset DataSet, iterations int) []float64 {
 
 	m := make([]float64, len(dataset))
 	v := make([]float64, len(dataset))
-	weights := make([]float64, len(dataset))
+	weights := make([]float64, len(dataset[0].X)+1)
 
-	for i := range dataset {
-		weights[i] = 1.0
+	for i := range weights {
+		weights[i] = 0.0
 	}
 
 	for t := 1; t < iterations; t++ {
 		grad := gradient(dataset, weights, len(dataset))
 		for j := range grad {
-			lrt := alpha * (math.Sqrt(1.0 - math.Pow(beta2, float64(t)))) /
-				(1.0 - math.Pow(beta1, float64(t)))
 			m[j] = beta1*m[j] + (1.0-beta1)*grad[j]
 			v[j] = beta2*v[j] + (1.0-beta2)*math.Pow(grad[j], 2.0)
 
-			weights[j] -= lrt * (m[j] / (math.Sqrt(v[j]) + epsilon))
+			mHat := m[j] / (1.0 - beta1*math.Pow(grad[j], float64(t)))
+			vHat := v[j] / (1.0 - beta2*math.Pow(grad[j], float64(t)))
+
+			weights[j] -= (alpha * mHat) / (math.Sqrt(math.Abs(vHat)) + epsilon)
+			// if math.IsNaN(weights[j]) {
+			// 	fmt.Println("grad: ", mHat, vHat)
+			// 	log.Fatal("weight didn't update properly: ", t, j)
+			// }
 		}
+		// fmt.Println(weights)
 	}
 	return weights
 }
@@ -65,9 +68,6 @@ func adamSolver(dataset DataSet, iterations int) []float64 {
 func gradient(dataset DataSet, weights []float64, batchSize int) []float64 {
 
 	g := make([]float64, len(weights))
-	for i := range weights {
-		g[i] = 0.0
-	}
 
 	// FIXME: too many passes on dataset
 	input := make([][]float64, len(dataset))
@@ -76,9 +76,22 @@ func gradient(dataset DataSet, weights []float64, batchSize int) []float64 {
 	}
 
 	preds := prediction(input, weights)
+
+	errs := make([]float64, len(preds))
+	errSum := 0.0
 	for j, data := range dataset[0:batchSize] {
-		g[j] += ((preds[j] - data.Y) * data.X[j])
+		errs[j] = preds[j] - data.Y
+		errSum += errs[j]
+
+		// fmt.Println("Error: ", errs[j])
+
+		for k := 1; k < len(weights); k++ {
+			g[k] += (1.0 / float64(len(dataset))) * errs[j] * data.X[k-1]
+
+		}
+		g[0] = (1.0 / float64(len(dataset))) * errSum
 	}
+	fmt.Println(g)
 
 	return g
 }
@@ -86,12 +99,94 @@ func gradient(dataset DataSet, weights []float64, batchSize int) []float64 {
 func prediction(x [][]float64, weights []float64) []float64 {
 	preds := make([]float64, len(x))
 	for i := 0; i < len(x); i++ {
-		for j := 0; j < len(x[0]); j++ {
-			preds[i] += x[i][j] * weights[i]
+		for j := 1; j < len(x[0]); j++ {
+			preds[i] += x[i][j-1] * weights[j]
 		}
+		preds[i] += weights[0]
 	}
 
 	return preds
+}
+
+func main() {
+	ds := DataSet{}
+	err := ds.LoadData("data.csv")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	trainSet, testSet := ds.Split(0.8)
+
+	testInput := make([][]float64, len(testSet))
+	testOutput := make([]float64, len(testSet))
+
+	for i, test := range testSet {
+		testInput[i] = test.X
+		testOutput[i] = test.Y
+	}
+
+	lr := Regression{iterations: 3}
+	lr.Fit(trainSet)
+	estimate := lr.Predict(testInput)
+	fmt.Println(testOutput[0], estimate[0])
+	fmt.Println("MSE: ", meanSquaredError(testOutput, estimate))
+
+}
+
+type DataSet []Data
+
+type Data struct {
+	X []float64
+	Y float64
+}
+
+func (d *DataSet) LoadData(fileName string) error {
+	f, err := os.Open(fileName)
+	if err != nil {
+		return fmt.Errorf("could not find csv file %s: %v", fileName, err)
+	}
+	defer f.Close()
+
+	lines, err := csv.NewReader(f).ReadAll()
+	if err != nil {
+		return err
+	}
+
+	data := make(DataSet, len(lines)-1)
+
+	for i, line := range lines[1:] {
+		inputs := []float64{}
+		for _, l := range line[2:8] {
+			t, err := strconv.Atoi(l)
+			if err != nil {
+				return err
+			}
+			inputs = append(inputs, float64(t))
+		}
+		data[i].X = inputs
+
+		r, err := strconv.Atoi(line[8])
+		if err != nil {
+			return err
+		}
+		data[i].Y = float64(r)
+
+	}
+
+	*d = data
+
+	return nil
+}
+
+func (d DataSet) Split(p float64) (training, testing DataSet) {
+	for i := 0; i < len(d); i++ {
+		if p > rand.Float64() {
+			training = append(training, d[i])
+		} else {
+			testing = append(testing, d[i])
+		}
+	}
+	return
 }
 
 func meanSquaredError(y, predY []float64) float64 {
@@ -101,30 +196,4 @@ func meanSquaredError(y, predY []float64) float64 {
 	}
 
 	return total / float64(len(y))
-}
-
-func main() {
-	xTrain := [][]float64{[]float64{1, 1, 1, 1, 1}, []float64{2, 2, 2, 2, 2}, []float64{3, 3, 3, 3, 3}, []float64{4, 4, 4, 4, 4}}
-	xTest := [][]float64{[]float64{5, 5, 5, 5, 5}, []float64{6, 6, 6, 6, 6}, []float64{7, 7, 7, 7, 7}, []float64{8, 8, 8, 8, 8}}
-	yTest := []float64{5, 6, 7, 8}
-
-	dsTrain := make(DataSet, len(xTrain))
-	for i, d := range xTrain {
-		dsTrain[i].X = d
-		dsTrain[i].Y = d[0]
-	}
-
-	dsTest := make(DataSet, len(xTest))
-	for i, d := range xTest {
-		dsTest[i].X = d
-		dsTest[i].Y = d[0]
-	}
-
-	lr := Regression{iterations: 4000}
-	lr.Fit(dsTrain)
-
-	pred := lr.Predict(xTest)
-
-	fmt.Println(pred)
-	fmt.Println("MSE: ", meanSquaredError(yTest, pred))
 }
