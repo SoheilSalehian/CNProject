@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -16,14 +17,15 @@ type Regression struct {
 }
 
 const (
-	alpha   float64 = 0.001
+	alpha   float64 = 0.01
 	beta1   float64 = 0.9
 	beta2   float64 = 0.999
 	epsilon float64 = 1e-8
 )
 
 func (r *Regression) Predict(x [][]float64) []float64 {
-	return prediction(x, r.weights)
+	result, _ := prediction(x, r.weights)
+	return result
 }
 
 func (r *Regression) Fit(dataset DataSet) error {
@@ -39,33 +41,54 @@ func adamSolver(dataset DataSet, iterations int) []float64 {
 
 	m := make([]float64, len(dataset))
 	v := make([]float64, len(dataset))
-	weights := make([]float64, len(dataset[0].X)+1)
+	weights := make([]float64, len(dataset[0].X))
 
 	for i := range weights {
-		weights[i] = 0.0
+		weights[i] = 4.0
 	}
 
-	for t := 1; t < iterations; t++ {
-		grad := gradient(dataset, weights, len(dataset))
-		for j := range grad {
-			m[j] = beta1*m[j] + (1.0-beta1)*grad[j]
-			v[j] = beta2*v[j] + (1.0-beta2)*math.Pow(grad[j], 2.0)
+	input := make([][]float64, len(dataset))
+	for i, data := range dataset {
+		input[i] = data.X
+	}
 
-			mHat := m[j] / (1.0 - beta1*math.Pow(grad[j], float64(t)))
-			vHat := v[j] / (1.0 - beta2*math.Pow(grad[j], float64(t)))
+	output := make([]float64, len(dataset))
+	for i, data := range dataset {
+		output[i] = data.Y
+	}
 
-			weights[j] -= (alpha * mHat) / (math.Sqrt(math.Abs(vHat)) + epsilon)
-			// if math.IsNaN(weights[j]) {
-			// 	fmt.Println("grad: ", mHat, vHat)
-			// 	log.Fatal("weight didn't update properly: ", t, j)
-			// }
+	t := 1
+
+	e := 0.0
+	for {
+		grads, preds := gradients(dataset, weights, len(dataset))
+		if t%1000 == 0 {
+			fmt.Println("Iteration: ", t, "trainig NRMSE: ", math.Abs(NRMSE(preds, output)))
 		}
-		// fmt.Println(weights)
+
+		e += math.Abs(NRMSE(preds, output))
+
+		if math.Abs(NRMSE(preds, output)) < 0.08 {
+			fmt.Printf("----Converged----")
+			return weights
+		}
+
+		for j := range weights {
+			lrt := alpha * (math.Sqrt(1.0 - math.Pow(beta2, float64(t)))) /
+				(1.0 - math.Pow(beta1, float64(t)))
+
+			m[j] = beta1*m[j] + (1.0-beta1)*grads[j]
+			v[j] = beta2*v[j] + (1.0-beta2)*math.Pow(grads[j], 2.0)
+
+			weights[j] -= lrt * (m[j] / (math.Sqrt(v[j]) + epsilon))
+		}
+		t += 1
 	}
 	return weights
 }
 
-func gradient(dataset DataSet, weights []float64, batchSize int) []float64 {
+//TODO: Add minibatches
+func gradients(dataset DataSet, weights []float64, batchSize int) ([]float64, []float64) {
 
 	g := make([]float64, len(weights))
 
@@ -75,37 +98,37 @@ func gradient(dataset DataSet, weights []float64, batchSize int) []float64 {
 		input[i] = data.X
 	}
 
-	preds := prediction(input, weights)
+	preds, err := prediction(input, weights)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	errs := make([]float64, len(preds))
-	errSum := 0.0
 	for j, data := range dataset[0:batchSize] {
-		errs[j] = preds[j] - data.Y
-		errSum += errs[j]
-
-		// fmt.Println("Error: ", errs[j])
-
-		for k := 1; k < len(weights); k++ {
-			g[k] += (1.0 / float64(len(dataset))) * errs[j] * data.X[k-1]
-
-		}
-		g[0] = (1.0 / float64(len(dataset))) * errSum
+		errs[j] = data.Y - preds[j]
 	}
-	fmt.Println(g)
 
-	return g
+	g, err = dot(transpose(input), errs)
+	if err != nil {
+		fmt.Println("dot product for gradient calculations failed.")
+		log.Fatal(err)
+	}
+
+	for k := range g {
+		g[k] /= float64(len(dataset)) * -1.0
+	}
+
+	return g, preds
 }
 
-func prediction(x [][]float64, weights []float64) []float64 {
-	preds := make([]float64, len(x))
-	for i := 0; i < len(x); i++ {
-		for j := 1; j < len(x[0]); j++ {
-			preds[i] += x[i][j-1] * weights[j]
-		}
-		preds[i] += weights[0]
-	}
+func prediction(x [][]float64, weights []float64) ([]float64, error) {
 
-	return preds
+	preds, err := dot(x, weights)
+	if err != nil {
+		log.Fatal(err)
+		return nil, err
+	}
+	return preds, nil
 }
 
 func main() {
@@ -114,6 +137,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	ds.Normalize()
 
 	trainSet, testSet := ds.Split(0.8)
 
@@ -125,12 +150,11 @@ func main() {
 		testOutput[i] = test.Y
 	}
 
-	lr := Regression{iterations: 3}
+	lr := Regression{iterations: 120000}
 	lr.Fit(trainSet)
 	estimate := lr.Predict(testInput)
 	fmt.Println(testOutput[0], estimate[0])
-	fmt.Println("MSE: ", meanSquaredError(testOutput, estimate))
-
+	fmt.Println("NRMSE: ", NRMSE(testOutput, estimate))
 }
 
 type DataSet []Data
@@ -151,7 +175,6 @@ func (d *DataSet) LoadData(fileName string) error {
 	if err != nil {
 		return err
 	}
-
 	data := make(DataSet, len(lines)-1)
 
 	for i, line := range lines[1:] {
@@ -189,11 +212,88 @@ func (d DataSet) Split(p float64) (training, testing DataSet) {
 	return
 }
 
-func meanSquaredError(y, predY []float64) float64 {
+func NRMSE(y, predY []float64) float64 {
 	var total float64
 	for i := 0; i < len(y); i++ {
-		total += (y[i] - predY[i]) * (y[i] - predY[i])
+		total += math.Pow((y[i] - predY[i]), 2)
+	}
+	min, max := minimum(y), maximum(y)
+
+	return (math.Sqrt(total / float64(len(y)))) / (max - min)
+}
+
+func (d DataSet) Normalize() {
+
+	input := make([][]float64, len(d))
+	for i, data := range d {
+		input[i] = data.X
 	}
 
-	return total / float64(len(y))
+	features := transpose(input)
+
+	for _, feature := range features {
+		min, max := minimum(feature), maximum(feature)
+		for k, x := range feature {
+			feature[k] = (x - min) / (max - min)
+		}
+	}
+
+	input = transpose(features)
+
+	for i := range d {
+		d[i].X = input[i]
+	}
+
+}
+
+func transpose(m [][]float64) [][]float64 {
+	r := make([][]float64, len(m[0]))
+	for x, _ := range r {
+		r[x] = make([]float64, len(m))
+	}
+	for y, s := range m {
+		for x, e := range s {
+			r[x][y] = e
+		}
+	}
+	return r
+}
+
+func minimum(xx []float64) float64 {
+	// fmt.Println(xx)
+	min := xx[0]
+	for _, x := range xx {
+		if x < min {
+			min = x
+		}
+	}
+	return min
+}
+
+func maximum(xx []float64) float64 {
+	max := xx[0]
+	for _, x := range xx {
+		if x > max {
+			max = x
+		}
+	}
+	return max
+}
+
+func dot(x [][]float64, y []float64) ([]float64, error) {
+	if len(x[0]) != len(y) {
+		fmt.Println("X: ", len(x[0]), "Y: ", len(y))
+		return nil, errors.New("Incorrect dimensions to do the dot product.")
+	}
+
+	out := make([]float64, len(x))
+	for i := 0; i < len(x); i++ {
+		for j := 0; j < len(y); j++ {
+			if len(out) < 1 {
+				out = make([]float64, len(y))
+			}
+			out[i] += x[i][j] * y[j]
+		}
+	}
+	return out, nil
 }
