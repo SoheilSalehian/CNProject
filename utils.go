@@ -6,6 +6,15 @@ import (
 	"math"
 )
 
+func RMSE(y, predY []float64) float64 {
+	var total float64
+	for i := 0; i < len(y); i++ {
+		total += math.Pow((y[i] - predY[i]), 2)
+	}
+
+	return math.Sqrt(total / float64(len(y)))
+}
+
 func NRMSE(y, predY []float64) float64 {
 	var total float64
 	for i := 0; i < len(y); i++ {

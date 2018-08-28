@@ -13,7 +13,7 @@ func adamSolver(dataset DataSet) []float64 {
 	weights := make([]float64, len(dataset[0].X))
 
 	for i := range weights {
-		weights[i] = 4.0
+		weights[i] = 0.0
 	}
 
 	input := make([][]float64, len(dataset))
@@ -28,16 +28,14 @@ func adamSolver(dataset DataSet) []float64 {
 
 	t := 1
 
-	e := 0.0
 	for {
-		grads, preds := gradients(dataset, weights, len(dataset))
+		grads, preds := gradients(dataset, weights)
 		if t%1000 == 0 {
-			fmt.Println("Iteration: ", t, "trainig NRMSE: ", math.Abs(NRMSE(preds, output)))
+			fmt.Println("Iteration: ", t, "trainig RMSE: ", math.Abs(RMSE(preds, output)))
+			fmt.Println(weights)
 		}
 
-		e += math.Abs(NRMSE(preds, output))
-
-		if math.Abs(NRMSE(preds, output)) < 0.08 {
+		if math.Abs(NRMSE(preds, output)) < 0.07 {
 			fmt.Printf("----Converged----")
 			return weights
 		}
@@ -57,13 +55,13 @@ func adamSolver(dataset DataSet) []float64 {
 }
 
 //TODO: Add minibatches
-func gradients(dataset DataSet, weights []float64, batchSize int) ([]float64, []float64) {
+func gradients(dataset DataSet, weights []float64) ([]float64, []float64) {
 
 	g := make([]float64, len(weights))
 
 	// FIXME: too many passes on dataset
 	input := make([][]float64, len(dataset))
-	for i, data := range dataset[0:batchSize] {
+	for i, data := range dataset {
 		input[i] = data.X
 	}
 
@@ -73,7 +71,7 @@ func gradients(dataset DataSet, weights []float64, batchSize int) ([]float64, []
 	}
 
 	errs := make([]float64, len(preds))
-	for j, data := range dataset[0:batchSize] {
+	for j, data := range dataset {
 		errs[j] = data.Y - preds[j]
 	}
 

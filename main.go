@@ -39,19 +39,21 @@ func main() {
 
 	ds.Normalize()
 
-	trainSet, testSet := ds.Split(0.8)
+	trainSet, testSet := ds.Split(0.7)
 
-	testInput := make([][]float64, len(testSet))
-	testOutput := make([]float64, len(testSet))
+	testInputs := make([][]float64, len(testSet))
+	testOutputs := make([]float64, len(testSet))
 
 	for i, test := range testSet {
-		testInput[i] = test.X
-		testOutput[i] = test.Y
+		testInputs[i] = test.X
+		testOutputs[i] = test.Y
 	}
 
 	lr := Regression{}
 	lr.Fit(trainSet)
-	estimate := lr.Predict(testInput)
-	fmt.Println(testOutput[0], estimate[0])
-	fmt.Println("NRMSE: ", NRMSE(testOutput, estimate))
+	estimate := lr.Predict(testInputs)
+	fmt.Println(testOutputs[0], estimate[0])
+	fmt.Println("RMSE: ", RMSE(testOutputs, estimate))
+
+	fmt.Println(lr.weights)
 }

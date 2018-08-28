@@ -60,6 +60,7 @@ func (d DataSet) Split(p float64) (training, testing DataSet) {
 			testing = append(testing, d[i])
 		}
 	}
+
 	return
 }
 
