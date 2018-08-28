@@ -6,7 +6,7 @@ import (
 	"math"
 )
 
-func adamSolver(dataset DataSet) []float64 {
+func adamaxSolver(dataset DataSet) []float64 {
 
 	m := make([]float64, len(dataset))
 	v := make([]float64, len(dataset))
@@ -29,13 +29,13 @@ func adamSolver(dataset DataSet) []float64 {
 	t := 1
 
 	for {
-		grads, preds := gradients(dataset, weights)
+		grads, preds, avgDeviation := gradients(dataset, weights)
 		if t%1000 == 0 {
-			fmt.Println("Iteration: ", t, "trainig RMSE: ", math.Abs(RMSE(preds, output)))
+			fmt.Println("Iteration: ", t, "training RMSE: ", math.Abs(RMSE(preds, output)), "Average Deviation: ", avgDeviation)
 			fmt.Println(weights)
 		}
 
-		if math.Abs(NRMSE(preds, output)) < 0.07 {
+		if math.Abs(NRMSE(preds, output)) < 0.08 {
 			fmt.Printf("----Converged----")
 			return weights
 		}
@@ -45,7 +45,7 @@ func adamSolver(dataset DataSet) []float64 {
 				(1.0 - math.Pow(beta1, float64(t)))
 
 			m[j] = beta1*m[j] + (1.0-beta1)*grads[j]
-			v[j] = beta2*v[j] + (1.0-beta2)*math.Pow(grads[j], 2.0)
+			v[j] = math.Max(beta2*v[j], math.Abs(grads[j]))
 
 			weights[j] -= lrt * (m[j] / (math.Sqrt(v[j]) + epsilon))
 		}
@@ -55,7 +55,7 @@ func adamSolver(dataset DataSet) []float64 {
 }
 
 //TODO: Add minibatches
-func gradients(dataset DataSet, weights []float64) ([]float64, []float64) {
+func gradients(dataset DataSet, weights []float64) ([]float64, []float64, float64) {
 
 	g := make([]float64, len(weights))
 
@@ -70,9 +70,12 @@ func gradients(dataset DataSet, weights []float64) ([]float64, []float64) {
 		log.Fatal(err)
 	}
 
+	errSum := 0.0
+
 	errs := make([]float64, len(preds))
 	for j, data := range dataset {
 		errs[j] = data.Y - preds[j]
+		errSum += errs[j] / data.Y
 	}
 
 	g, err = dot(transpose(input), errs)
@@ -85,7 +88,7 @@ func gradients(dataset DataSet, weights []float64) ([]float64, []float64) {
 		g[k] /= float64(len(dataset)) * -1.0
 	}
 
-	return g, preds
+	return g, preds, errSum / float64(len(dataset))
 }
 
 func prediction(x [][]float64, weights []float64) ([]float64, error) {

@@ -22,7 +22,7 @@ type Regression struct {
 }
 
 func (r *Regression) Fit(dataset DataSet) {
-	r.weights = adamSolver(dataset)
+	r.weights = adamaxSolver(dataset)
 }
 
 func (r *Regression) Predict(x [][]float64) []float64 {
