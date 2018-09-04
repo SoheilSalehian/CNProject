@@ -6,7 +6,7 @@ import (
 	"math"
 )
 
-func adamaxSolver(dataset DataSet) []float64 {
+func adamaxSolver(dataset DataSet, iterations int) []float64 {
 
 	m := make([]float64, len(dataset))
 	v := make([]float64, len(dataset))
@@ -26,16 +26,14 @@ func adamaxSolver(dataset DataSet) []float64 {
 		output[i] = data.Y
 	}
 
-	t := 1
-
-	for {
+	for t := 1; t <= iterations; t++ {
 		grads, preds, avgDeviation := gradients(dataset, weights)
 		if t%1000 == 0 {
 			fmt.Println("Iteration: ", t, "training RMSE: ", math.Abs(RMSE(preds, output)), "Average Deviation: ", avgDeviation)
 			fmt.Println(weights)
 		}
 
-		if math.Abs(NRMSE(preds, output)) < 0.08 {
+		if math.Abs(NRMSE(preds, output)) < 0.08 && *earlyStop == true {
 			fmt.Printf("----Converged----")
 			return weights
 		}
@@ -49,7 +47,6 @@ func adamaxSolver(dataset DataSet) []float64 {
 
 			weights[j] -= lrt * (m[j] / (math.Sqrt(v[j]) + epsilon))
 		}
-		t += 1
 	}
 	return weights
 }

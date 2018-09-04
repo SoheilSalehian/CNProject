@@ -1,13 +1,15 @@
 // TODO
-// - Adamax
 // - Channels
 // - Saving weights
 
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
+
+	"github.com/pkg/profile"
 )
 
 const (
@@ -17,12 +19,15 @@ const (
 	epsilon float64 = 1e-8
 )
 
+var earlyStop = flag.Bool("earlyStop", true, "Enable/Disable early stopping based on NRMSE criteria.")
+
 type Regression struct {
-	weights []float64
+	iterations int
+	weights    []float64
 }
 
 func (r *Regression) Fit(dataset DataSet) {
-	r.weights = adamaxSolver(dataset)
+	r.weights = adamaxSolver(dataset, r.iterations)
 }
 
 func (r *Regression) Predict(x [][]float64) []float64 {
@@ -31,6 +36,15 @@ func (r *Regression) Predict(x [][]float64) []float64 {
 }
 
 func main() {
+
+	var cpuProfile = flag.Bool("cpuProfile", false, "To enable CPU profiling.")
+	if *cpuProfile == true {
+		defer profile.Start().Stop()
+	}
+
+	iter := flag.Int("iters", 1000, "Number of iterations to run the regression")
+	flag.Parse()
+
 	ds := DataSet{}
 	err := ds.LoadData("data.csv")
 	if err != nil {
@@ -49,7 +63,7 @@ func main() {
 		testOutputs[i] = test.Y
 	}
 
-	lr := Regression{}
+	lr := Regression{iterations: *iter}
 	lr.Fit(trainSet)
 	estimate := lr.Predict(testInputs)
 	fmt.Println(testOutputs[0], estimate[0])
