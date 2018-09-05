@@ -6,6 +6,43 @@ import (
 	"math"
 )
 
+func sgdSolver(dataset DataSet, iterations int) []float64 {
+
+	weights := make([]float64, len(dataset[0].X))
+
+	for i := range weights {
+		weights[i] = 0.0
+	}
+
+	input := make([][]float64, len(dataset))
+	for i, data := range dataset {
+		input[i] = data.X
+	}
+
+	output := make([]float64, len(dataset))
+	for i, data := range dataset {
+		output[i] = data.Y
+	}
+
+	for t := 1; t <= iterations; t++ {
+		grads, preds, avgDeviation := gradients(dataset, weights)
+		if t%1000 == 0 {
+			fmt.Println("Iteration: ", t, "training RMSE: ", math.Abs(RMSE(preds, output)), "Average Deviation: ", avgDeviation)
+			fmt.Println(weights)
+		}
+
+		if math.Abs(NRMSE(preds, output)) < 0.08 && *earlyStop == true {
+			fmt.Printf("----Converged----")
+			return weights
+		}
+
+		for j := range weights {
+			weights[j] -= alpha * grads[j]
+		}
+	}
+	return weights
+}
+
 func adamaxSolver(dataset DataSet, iterations int) []float64 {
 
 	m := make([]float64, len(dataset))

@@ -20,6 +20,7 @@ const (
 )
 
 var earlyStop = flag.Bool("earlyStop", true, "Enable/Disable early stopping based on NRMSE criteria.")
+var solver = flag.String("solver", "adamax", "type of solver used: 'sdg' or 'adamax' supported currently.")
 
 type Regression struct {
 	iterations int
@@ -27,7 +28,11 @@ type Regression struct {
 }
 
 func (r *Regression) Fit(dataset DataSet) {
-	r.weights = adamaxSolver(dataset, r.iterations)
+	if *solver == "adamax" {
+		r.weights = adamaxSolver(dataset, r.iterations)
+	} else {
+		r.weights = sgdSolver(dataset, r.iterations)
+	}
 }
 
 func (r *Regression) Predict(x [][]float64) []float64 {
@@ -42,7 +47,7 @@ func main() {
 		defer profile.Start().Stop()
 	}
 
-	iter := flag.Int("iters", 1000, "Number of iterations to run the regression")
+	iter := flag.Int("iters", 40000, "Number of iterations to run the regression")
 	flag.Parse()
 
 	ds := DataSet{}
